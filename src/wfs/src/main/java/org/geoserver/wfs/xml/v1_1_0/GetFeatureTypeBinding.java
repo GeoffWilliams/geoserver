@@ -12,6 +12,7 @@ import net.opengis.wfs.GetFeatureType;
 import net.opengis.wfs.QueryType;
 import net.opengis.wfs.ResultTypeType;
 import net.opengis.wfs.WfsFactory;
+import org.geoserver.wfs.xml.SqlViewParamsExtractor;
 
 import org.geotools.util.Converters;
 import org.geotools.xml.AbstractComplexBinding;
@@ -217,6 +218,9 @@ public class GetFeatureTypeBinding extends AbstractComplexBinding {
             getFeature.setTraverseXlinkExpiry((BigInteger) node.getAttributeValue(
                     "traverseXlinkExpiry"));
         }
+
+        // viewParams
+        SqlViewParamsExtractor.viewParams(getFeature, node);
 
         return getFeature;
     }
