@@ -19,7 +19,6 @@ import org.geoserver.wfs.xml.WFSURIHandler;
 import org.geoserver.wfs.xml.WFSXmlUtils;
 import org.geotools.util.Version;
 import org.geotools.wfs.v2_0.WFS;
-import org.geotools.wfs.v2_0.WFSConfiguration;
 import org.geotools.xml.Parser;
 
 /**
