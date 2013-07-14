@@ -7,18 +7,18 @@
  <parent>
   <groupId>org.geoserver</groupId>
   <artifactId>community</artifactId>
-  <version>2.3.0</version>
+  <version>2.3.3</version>
  </parent>
 
 	<groupId>org.geoserver.community</groupId>
 	<artifactId>libjpeg-turbo</artifactId>
 	<packaging>jar</packaging>
-	<version>2.3.0</version>
+	<version>2.3.3</version>
 	<name>GeoServer libjpeg-turbo Module</name>
 	
 
  <properties>
-  <imageio-ext.version>1.1.6</imageio-ext.version>
+  <imageio-ext.version>1.1.7</imageio-ext.version>
  </properties>  	
 
 	<dependencies>

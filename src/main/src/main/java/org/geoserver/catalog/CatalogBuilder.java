@@ -17,7 +17,6 @@ import javax.measure.unit.Unit;
 import javax.media.jai.PlanarImage;
 
 import org.geoserver.catalog.impl.FeatureTypeInfoImpl;
-import org.geoserver.catalog.impl.LayerGroupInfoImpl;
 import org.geoserver.catalog.impl.ModificationProxy;
 import org.geoserver.catalog.impl.ResourceInfoImpl;
 import org.geoserver.catalog.impl.StoreInfoImpl;
@@ -40,7 +39,6 @@ import org.geotools.data.wms.WebMapServer;
 import org.geotools.factory.GeoTools;
 import org.geotools.gce.imagemosaic.ImageMosaicFormat;
 import org.geotools.geometry.GeneralEnvelope;
-import org.geotools.geometry.jts.JTS;
 import org.geotools.geometry.jts.ReferencedEnvelope;
 import org.geotools.referencing.CRS;
 import org.geotools.referencing.CRS.AxisOrder;
@@ -515,7 +513,8 @@ public class CatalogBuilder {
             if (!CRS.equalsIgnoreMetadata(DefaultGeographicCRS.WGS84, declaredCRS)) {
                 // transform
                 try {
-                	return JTS.toGeographic( nativeBounds );
+                    ReferencedEnvelope bounds = new ReferencedEnvelope(nativeBounds, declaredCRS);
+                    return bounds.transform(DefaultGeographicCRS.WGS84, true);
                 } catch (Exception e) {
                     throw (IOException) new IOException("transform error").initCause(e);
                 }
@@ -590,6 +589,11 @@ public class CatalogBuilder {
             // get  bounds
             bounds = new ReferencedEnvelope(reader.getOriginalEnvelope());
            
+        } else if(rinfo instanceof WMSLayerInfo) {
+            // the logic to compute the native bounds is pretty convoluted,
+            // let's rebuild the layer info
+            WMSLayerInfo rebuilt = buildWMSLayer(rinfo.getStore(), rinfo.getNativeName());
+            bounds = rebuilt.getNativeBoundingBox();
         }
 
         // apply the bounds, taking into account the reprojection policy if need be
@@ -708,7 +712,7 @@ public class CatalogBuilder {
         OwsUtils.resolveCollections(wmsLayer);
 
         // get a fully initialized version we can copy from
-        WMSLayerInfo full = buildWMSLayer(wmsLayer.getNativeName());
+        WMSLayerInfo full = buildWMSLayer(store, wmsLayer.getNativeName());
 
         // setup the srs if missing
         if (wmsLayer.getSRS() == null) {
@@ -1061,13 +1065,16 @@ public class CatalogBuilder {
 
         return dims;
     }
-
+    
     public WMSLayerInfo buildWMSLayer(String layerName) throws IOException {
+        return buildWMSLayer(this.store, layerName);
+    }
+
+    WMSLayerInfo buildWMSLayer(StoreInfo store, String layerName) throws IOException {
         if (store == null || !(store instanceof WMSStoreInfo)) {
             throw new IllegalStateException("WMS store not set.");
         }
 
-        WMSStoreInfo wms = (WMSStoreInfo) store;
         WMSLayerInfo wli = catalog.getFactory().createWMSLayer();
 
         wli.setName(layerName);
@@ -1125,17 +1132,6 @@ public class CatalogBuilder {
             ReferencedEnvelope re = new ReferencedEnvelope(envelope.getMinimum(0), envelope
                     .getMaximum(0), envelope.getMinimum(1), envelope.getMaximum(1), wli
                     .getNativeCRS());
-            // are we in crazy wms 1.3 land?
-            WebMapServer mapServer = wms.getWebMapServer(null);
-            Version version = new Version(mapServer.getCapabilities().getVersion());
-            if(axisFlipped(version, srs)) {
-                // flip axis, the wms code won't actually use the crs
-                double minx = re.getMinX();
-                double miny = re.getMinY();
-                double maxx = re.getMaxX();
-                double maxy = re.getMaxY();
-                re = new ReferencedEnvelope(miny, maxy, minx, maxx, wli.getNativeCRS());
-            }
             wli.setNativeBoundingBox(re);
         }
         CRSEnvelope llbbox = layer.getLatLonBoundingBox();

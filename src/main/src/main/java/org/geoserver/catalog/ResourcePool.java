@@ -1170,7 +1170,9 @@ public class ResourcePool {
             final String formatName = gridFormat.getName();
             if (formatName.equalsIgnoreCase(IMAGE_MOSAIC) || formatName.equalsIgnoreCase(IMAGE_PYRAMID)){
                 if (coverageExecutor != null){
-                    if (hints != null){
+                    if (hints != null) {
+                        // do not modify the caller hints
+                        hints = new Hints(hints);
                         hints.add(new RenderingHints(Hints.EXECUTOR_SERVICE, coverageExecutor));
                     } else {
                         hints = new Hints(new RenderingHints(Hints.EXECUTOR_SERVICE, coverageExecutor));
@@ -1179,7 +1181,7 @@ public class ResourcePool {
             }
             
             key = new CoverageHintReaderKey(info.getId(), hints);
-            reader = (GridCoverageReader) hintCoverageReaderCache.get( key );    
+            reader = (GridCoverageReader) hintCoverageReaderCache.get( key );
         } else {
             key = info.getId();
             if(key != null) {
@@ -1207,7 +1209,8 @@ public class ResourcePool {
                 // /////////////////////////////////////////////////////////
                 final File obj = GeoserverDataDirectory.findDataFile(info.getURL());
     
-                reader = gridFormat.getReader(obj,hints);
+                // readers might change the provided hints, pass down a defensive copy
+                reader = gridFormat.getReader(obj, new Hints(hints));
                 if(key != null) {
                     if(hints != null) {
                         hintCoverageReaderCache.put((CoverageHintReaderKey) key, reader);
@@ -1392,27 +1395,9 @@ public class ResourcePool {
                 synchronized (wmsCache) {
                     wms = (WebMapServer) wmsCache.get(id);
                     if (wms == null) {
-                        HTTPClient client;
-                        if (info.isUseConnectionPooling()) {
-                            client = new MultithreadedHttpClient();
-                            if (info.getMaxConnections() > 0) {
-                                int maxConnections = info.getMaxConnections();
-                                MultithreadedHttpClient mtClient = (MultithreadedHttpClient) client;
-                                mtClient.setMaxConnections(maxConnections);
-                            }
-                        } else {
-                            client = new SimpleHttpClient();
-                        }
-                        String username = info.getUsername();
-                        String password = info.getPassword();
-                        int connectTimeout = info.getConnectTimeout();
-                        int readTimeout = info.getReadTimeout();
-                        client.setUser(username);
-                        client.setPassword(password);
-                        client.setConnectTimeout(connectTimeout);
-                        client.setReadTimeout(readTimeout);
-
-                        URL serverURL = new URL(info.getCapabilitiesURL());
+                        HTTPClient client = getHTTPClient(info);
+                        String capabilitiesURL = info.getCapabilitiesURL();
+                        URL serverURL = new URL(capabilitiesURL);
                         wms = new WebMapServer(serverURL, client);
                         
                         wmsCache.put(id, wms);
@@ -1428,6 +1413,39 @@ public class ResourcePool {
         }
     }
     
+    private HTTPClient getHTTPClient(WMSStoreInfo info) {
+        String capabilitiesURL = info.getCapabilitiesURL();
+        
+        // check for mock bindings. Since we are going to run this code in production as well,
+        // guard it so that it only triggers if the MockHttpClientProvider has any active binding
+        if(TestHttpClientProvider.testModeEnabled() && capabilitiesURL.startsWith(TestHttpClientProvider.MOCKSERVER)) {
+            HTTPClient client = TestHttpClientProvider.get(capabilitiesURL);
+            return client;
+        }
+        
+        HTTPClient client;
+        if (info.isUseConnectionPooling()) {
+            client = new MultithreadedHttpClient();
+            if (info.getMaxConnections() > 0) {
+                int maxConnections = info.getMaxConnections();
+                MultithreadedHttpClient mtClient = (MultithreadedHttpClient) client;
+                mtClient.setMaxConnections(maxConnections);
+            }
+        } else {
+            client = new SimpleHttpClient();
+        }
+        String username = info.getUsername();
+        String password = info.getPassword();
+        int connectTimeout = info.getConnectTimeout();
+        int readTimeout = info.getReadTimeout();
+        client.setUser(username);
+        client.setPassword(password);
+        client.setConnectTimeout(connectTimeout);
+        client.setReadTimeout(readTimeout);
+        
+        return client;
+    }
+
     /**
      * Locates and returns a WMS {@link Layer} based on the configuration stored in WMSLayerInfo 
      * @param info
@@ -1484,7 +1502,7 @@ public class ResourcePool {
                         throw new IOException( "No such file: " + info.getFilename());
                     }
                     
-                    style = Styles.style(Styles.parse(styleFile, info.getSLDVersion()));
+                    style = Styles.style(Styles.parse(styleFile, null, info.getSLDVersion()));
                     
                     //set the name of the style to be the name of hte style metadata
                     // remove this when wms works off style info
